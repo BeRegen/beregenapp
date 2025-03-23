@@ -7,6 +7,11 @@ interface Task {
   id: string;
   text: string;
   completed: boolean;
+  title?: string;
+  alarm?: string;
+  subItems?: string[];
+  link?: string;
+  tags?: string[];
 }
 
 const Home: React.FC = () => {
@@ -18,10 +23,19 @@ const Home: React.FC = () => {
     setStorageItem('tasks', tasks);
   }, [tasks]);
 
-  const handleAddTask = useCallback((text: string) => {
+  const handleAddTask = useCallback((taskData: Partial<Task>) => {
     setTasks((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), text, completed: false },
+      {
+        id: crypto.randomUUID(),
+        text: taskData.text || '',
+        completed: false,
+        title: taskData.title || '',
+        alarm: taskData.alarm || '',
+        subItems: taskData.subItems || [],
+        link: taskData.link || '',
+        tags: taskData.tags || [],
+      },
     ]);
   }, []);
 
