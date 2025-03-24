@@ -12,6 +12,7 @@ interface Task {
   subItems?: string[];
   link?: string;
   tags?: string[];
+  priority?: 'high' | 'medium' | 'low';
 }
 
 const Home: React.FC = () => {
@@ -24,10 +25,9 @@ const Home: React.FC = () => {
   }, [tasks]);
 
   const handleAddTask = useCallback((taskData: Partial<Task>) => {
-    setTasks((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
+    setTasks((prev) => {
+      const newTask = {
+        id: taskData.id || crypto.randomUUID(),
         text: taskData.text || '',
         completed: false,
         title: taskData.title || '',
@@ -35,8 +35,15 @@ const Home: React.FC = () => {
         subItems: taskData.subItems || [],
         link: taskData.link || '',
         tags: taskData.tags || [],
-      },
-    ]);
+        priority: taskData.priority,
+      };
+
+      const updatedTasks = taskData.id
+        ? prev.map((task) => (task.id === taskData.id ? newTask : task))
+        : [...prev, newTask];
+
+      return sortTasks(updatedTasks);
+    });
   }, []);
 
   const handleToggleTask = useCallback((id: string) => {
@@ -50,6 +57,15 @@ const Home: React.FC = () => {
   const handleDeleteTask = useCallback((id: string) => {
     setTasks((prev) => prev.filter((task) => task.id !== id));
   }, []);
+
+  const sortTasks = (tasks: Task[]): Task[] => {
+    const priorityOrder = { high: 0, medium: 1, low: 2, none: 3 };
+    return [...tasks].sort((a, b) => {
+      const aPriority = a.priority || 'none';
+      const bPriority = b.priority || 'none';
+      return priorityOrder[aPriority] - priorityOrder[bPriority];
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] flex">

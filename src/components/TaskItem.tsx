@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Check, Trash2, Clock, Link as LinkIcon } from 'lucide-react';
+import { Check, Trash2, Clock, Link as LinkIcon, Pencil } from 'lucide-react';
 
 interface TaskItemProps {
   id: string;
@@ -9,8 +9,10 @@ interface TaskItemProps {
   alarm?: string;
   link?: string;
   tags?: string[];
+  priority?: 'high' | 'medium' | 'low';
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: () => void;
 }
 
 const TaskItem: React.FC<TaskItemProps> = memo(({ 
@@ -21,57 +23,38 @@ const TaskItem: React.FC<TaskItemProps> = memo(({
   alarm,
   link,
   tags,
+  priority,
   onToggle, 
-  onDelete 
+  onDelete,
+  onEdit 
 }) => {
-  const renderFormattedText = (content: string) => {
-    const lines = content.split('\n');
-    return lines.map((line, index) => {
-      // Handle bullet points
-      if (line.startsWith('- ')) {
-        return (
-          <li key={index} className="ml-6">
-            {renderInlineFormatting(line.substring(2))}
-          </li>
-        );
-      }
-      return (
-        <p key={index} className="mb-1">
-          {renderInlineFormatting(line)}
-        </p>
-      );
-    });
-  };
-
-  const renderInlineFormatting = (content: string) => {
-    // Replace **text** with <strong> and *text* with <em>
-    const parts = content.split(/(\*\*.*?\*\*|\*.*?\*)/g);
-    return parts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={index}>{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith('*') && part.endsWith('*')) {
-        return <em key={index}>{part.slice(1, -1)}</em>;
-      }
-      return part;
-    });
+  const getPriorityColor = (priority?: 'high' | 'medium' | 'low') => {
+    switch (priority) {
+      case 'high': return 'bg-red-500';
+      case 'medium': return 'bg-yellow-500';
+      case 'low': return 'bg-green-500';
+      default: return 'hidden';
+    }
   };
 
   return (
     <div 
-      className={`transform transition-all duration-300 ease-in-out
+      className={`transform transition-all duration-200 ease-in-out
         ${completed ? 'opacity-75' : 'opacity-100'}
-        group flex flex-col p-4 bg-white rounded-lg border border-gray-200
-        hover:border-gray-300 hover:shadow-sm`}
+        group flex flex-col p-4 bg-white rounded-xl shadow-sm border border-[#E5E7EB]
+        hover:shadow-md`}
     >
       <div className="flex items-start">
+        {priority && (
+          <div className={`w-4 h-4 rounded-full mr-2 mt-2 ${getPriorityColor(priority)}`} />
+        )}
         <button
           onClick={() => onToggle(id)}
           className={`flex-shrink-0 w-6 h-6 rounded-md border-2 mr-4 mt-1
             transition-colors duration-200 flex items-center justify-center
             ${completed 
-              ? 'bg-[#2F855A] border-[#2F855A]' 
-              : 'border-gray-300 hover:border-[#2F855A]'
+              ? 'bg-[#10B981] border-[#10B981]' 
+              : 'border-[#E5E7EB] hover:border-[#10B981]'
             }`}
         >
           {completed && <Check className="w-4 h-4 text-white" />}
@@ -79,20 +62,20 @@ const TaskItem: React.FC<TaskItemProps> = memo(({
 
         <div className="flex-1 min-w-0">
           {title && (
-            <h3 className="font-bold text-gray-900 mb-1">
+            <h3 className="text-xl font-semibold text-[#1F2937] mb-1">
               {title}
             </h3>
           )}
           
-          <div className={`${completed ? 'text-gray-500 line-through' : 'text-gray-900'}
-            transition-colors duration-200`}
-          >
-            {renderFormattedText(text)}
-          </div>
+          <div 
+            className={`${completed ? 'text-[#6B7280] line-through' : 'text-[#1F2937]'}
+              text-base font-normal transition-colors duration-200`}
+            dangerouslySetInnerHTML={{ __html: text }}
+          />
 
           <div className="mt-3 space-y-2">
             {alarm && (
-              <div className="flex items-center text-sm text-gray-600">
+              <div className="flex items-center text-sm text-[#6B7280]">
                 <Clock className="w-4 h-4 mr-2" />
                 {new Date(alarm).toLocaleString()}
               </div>
@@ -103,7 +86,7 @@ const TaskItem: React.FC<TaskItemProps> = memo(({
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center text-sm text-blue-600 hover:text-blue-800 
+                className="flex items-center text-sm text-[#10B981] hover:text-[#0A9C6D] 
                   transition-colors duration-200"
               >
                 <LinkIcon className="w-4 h-4 mr-2" />
@@ -116,7 +99,7 @@ const TaskItem: React.FC<TaskItemProps> = memo(({
                 {tags.map((tag, index) => (
                   <span
                     key={index}
-                    className="px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-xs"
+                    className="px-2 py-1 bg-[#F9FAFB] text-[#6B7280] rounded-md text-xs"
                   >
                     {tag}
                   </span>
@@ -126,13 +109,22 @@ const TaskItem: React.FC<TaskItemProps> = memo(({
           </div>
         </div>
 
-        <button
-          onClick={() => onDelete(id)}
-          className="ml-4 text-gray-400 hover:text-red-500 transition-colors duration-200
-            opacity-0 group-hover:opacity-100 focus:opacity-100"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex gap-2 ml-4">
+          <button
+            onClick={onEdit}
+            className="text-[#6B7280] hover:text-[#10B981] transition-all duration-200
+              opacity-0 group-hover:opacity-100 focus:opacity-100 hover:scale-105"
+          >
+            <Pencil className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => onDelete(id)}
+            className="text-[#6B7280] hover:text-[#10B981] transition-all duration-200
+              opacity-0 group-hover:opacity-100 focus:opacity-100 hover:scale-105"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );
