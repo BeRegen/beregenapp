@@ -1,342 +1,249 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Plus, Clock, Link as LinkIcon, Bold, Italic, List, Tag, Flag } from 'lucide-react';
-import TaskItem from './TaskItem';
-import { sanitizeInput } from '../utils/validation';
-
-interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  title?: string;
-  alarm?: string;
-  link?: string;
-  tags?: string[];
-  priority?: 'high' | 'medium' | 'low';
-}
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Search, ChevronDown, ChevronUp, Flag, Check } from 'lucide-react';
+import TaskActions from './TaskActions';
+import TaskFormModal from './TaskFormModal';
+import Button from './Button';
+import { Task, Priority } from '../types';
 
 interface TaskListProps {
   tasks: Task[];
-  onAddTask: (task: Partial<Task>) => void;
-  onToggleTask: (id: string) => void;
-  onDeleteTask: (id: string) => void;
+  onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
+  onTaskDelete: (taskId: string) => void;
+  onTaskAdd: (task: Partial<Task>) => void;
 }
 
 const TaskList: React.FC<TaskListProps> = ({
   tasks,
-  onAddTask,
-  onToggleTask,
-  onDeleteTask,
+  onTaskUpdate,
+  onTaskDelete,
+  onTaskAdd,
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
+  console.log('TaskList rendering with tasks:', tasks);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | Priority>('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showAlarmInput, setShowAlarmInput] = useState(false);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [showTagInput, setShowTagInput] = useState(false);
-  const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
-  const [alarm, setAlarm] = useState('');
-  const [link, setLink] = useState('');
-  const [tags, setTags] = useState('');
-  const [priority, setPriority] = useState<'high' | 'medium' | 'low' | undefined>();
-  const titleRef = useRef<HTMLDivElement>(null);
-  const descriptionRef = useRef<HTMLDivElement>(null);
+  const [activePriorityDropdown, setActivePriorityDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if ((isAdding || editingTask) && titleRef.current) {
-      titleRef.current.focus();
-    }
-  }, [isAdding, editingTask]);
-
-  useEffect(() => {
-    if (editingTask) {
-      if (titleRef.current) titleRef.current.textContent = editingTask.title || '';
-      if (descriptionRef.current) descriptionRef.current.innerHTML = editingTask.text || '';
-      setAlarm(editingTask.alarm || '');
-      setLink(editingTask.link || '');
-      setTags(editingTask.tags?.join(', ') || '');
-      setPriority(editingTask.priority);
-      setIsAdding(true);
-    }
-  }, [editingTask]);
-
-  const resetForm = () => {
-    if (titleRef.current) titleRef.current.textContent = '';
-    if (descriptionRef.current) descriptionRef.current.innerHTML = '';
-    setAlarm('');
-    setLink('');
-    setTags('');
-    setPriority(undefined);
-    setShowAlarmInput(false);
-    setShowLinkInput(false);
-    setShowTagInput(false);
-    setShowPriorityDropdown(false);
-    setIsAdding(false);
-    setEditingTask(null);
-  };
-
-  const handleSubmit = useCallback(
-    (e?: React.FormEvent) => {
-      if (e) e.preventDefault();
-      const title = titleRef.current?.textContent || '';
-      const description = descriptionRef.current?.innerHTML || '';
-      
-      const sanitizedTitle = sanitizeInput(title);
-      
-      if (description) {
-        const taskData: Partial<Task> = {
-          text: description,
-          ...(sanitizedTitle ? { title: sanitizedTitle } : {}),
-          ...(alarm ? { alarm } : {}),
-          ...(link ? { link } : {}),
-          ...(tags ? { tags: tags.split(',').map(tag => tag.trim()) } : {}),
-          ...(priority ? { priority } : {}),
-        };
-
-        if (editingTask) {
-          onAddTask({ ...taskData, id: editingTask.id });
-        } else {
-          onAddTask(taskData);
-        }
-        resetForm();
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setActivePriorityDropdown(null);
       }
-    },
-    [alarm, link, tags, priority, onAddTask, editingTask]
-  );
+    };
 
-  const handleFormat = (command: string) => {
-    if (!descriptionRef.current) return;
-    document.execCommand(command, false);
-    descriptionRef.current.focus();
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const filteredTasks = tasks.filter(task => {
+    const matchesSearch = task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (task.title?.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesFilter = filter === 'all' ||
+      (filter === 'active' && !task.completed) ||
+      (filter === 'completed' && task.completed);
+    const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
+    return matchesSearch && matchesFilter && matchesPriority;
+  });
+
+  console.log('Filtered tasks:', filteredTasks);
+
+  const handleTaskToggle = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      console.log('Toggling task completion:', taskId, !task.completed);
+      onTaskUpdate(taskId, { 
+        completed: !task.completed,
+        completedAt: !task.completed ? Date.now() : undefined
+      });
+    }
   };
 
-  const handleBulletPoint = () => {
-    if (!descriptionRef.current) return;
-    document.execCommand('insertHTML', false, '<div class="list-disc ml-4 text-[#6B7280]">• </div>');
-    descriptionRef.current.focus();
+  const handleTaskEdit = (task: Task) => {
+    setEditingTask(task);
+    setIsModalOpen(true);
   };
 
-  const handleTagAdd = (value: string) => {
-    const newTags = value.split(',').map(tag => tag.trim()).filter(Boolean);
-    setTags(newTags.join(', '));
+  const handleTaskDelete = (taskId: string) => {
+    onTaskDelete(taskId);
+  };
+
+  const handlePriorityChange = (taskId: string, priority: 'high' | 'medium' | 'low') => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      onTaskUpdate(taskId, { 
+        ...task,
+        priority
+      });
+      setActivePriorityDropdown(null);
+    }
+  };
+
+  const getPriorityColor = (priority?: 'high' | 'medium' | 'low') => {
+    switch (priority) {
+      case 'high': return 'text-red-500';
+      case 'medium': return 'text-yellow-500';
+      case 'low': return 'text-green-500';
+      default: return 'text-[#6B7280]';
+    }
   };
 
   return (
-    <div className="relative min-h-[400px]">
-      <div className="space-y-3">
-        {tasks.map((task) => (
-          <TaskItem
-            key={task.id}
-            {...task}
-            onToggle={onToggleTask}
-            onDelete={onDeleteTask}
-            onEdit={() => setEditingTask(task)}
+    <div className="w-full">
+      <div className="flex items-center gap-4 mb-6">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#698AAF] w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white rounded-lg border border-white
+              focus:outline-none focus:ring-2 focus:ring-[#4CADCB]/20 focus:border-transparent
+              text-[#2C5A99] placeholder-[#698AAF]/70 shadow-sm backdrop-blur-sm"
           />
-        ))}
-        
-        {tasks.length === 0 && (
-          <div className="text-center py-8 text-[#6B7280]">
-            No tasks yet. Add your first task!
-          </div>
-        )}
+        </div>
+
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as 'all' | 'active' | 'completed')}
+          className="px-4 py-2 bg-white rounded-lg border border-white
+            focus:outline-none focus:ring-2 focus:ring-[#4CADCB]/20 focus:border-transparent
+            text-[#2C5A99] min-w-[120px] shadow-sm backdrop-blur-sm"
+        >
+          <option value="all">All Tasks</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+        </select>
+
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value as 'all' | Priority)}
+          className="px-4 py-2 bg-white rounded-lg border border-white
+            focus:outline-none focus:ring-2 focus:ring-[#4CADCB]/20 focus:border-transparent
+            text-[#2C5A99] min-w-[120px] shadow-sm backdrop-blur-sm"
+        >
+          <option value="all">Priority</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+
+        <Button
+          variant="primary"
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2 bg-gradient-to-r from-[#4CADCB] to-[#2C5A99] text-white rounded-lg 
+            hover:shadow-lg hover:shadow-[#4CADCB]/10 transition-all duration-200 active:scale-95
+            shadow-md shadow-[#4CADCB]/5 flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Add Task
+        </Button>
       </div>
 
-      {isAdding && (
-        <>
-          <div 
-            className="fixed inset-0 bg-gray-900 bg-opacity-60 z-40"
-            onClick={handleSubmit}
-          />
-          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
-            bg-white p-4 sm:p-6 rounded-xl shadow-lg border border-[#E5E7EB] 
-            max-w-[90vw] w-full max-h-[80vh] overflow-y-auto max-w-lg z-50"
-          >
-            <div
-              ref={titleRef}
-              contentEditable
-              className="text-lg sm:text-xl font-semibold text-[#1F2937] w-full px-3 py-2 
-                border-b border-[#E5E7EB] focus:outline-none 
-                empty:before:content-[attr(data-placeholder)] empty:before:text-[#6B7280]"
-              data-placeholder="Title Here..."
-            />
-            
-            <div
-              ref={descriptionRef}
-              contentEditable
-              className="text-sm sm:text-base font-normal text-[#1F2937] w-full px-3 py-2 
-                border-b border-[#E5E7EB] focus:outline-none min-h-[80px] sm:min-h-[100px]
-                empty:before:content-[attr(data-placeholder)] empty:before:text-[#6B7280]"
-              data-placeholder="Task description here..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  document.execCommand('insertLineBreak', false);
-                }
-              }}
-            />
-
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 bg-[#E5E7EB] text-[#1F2937] rounded-md 
-                  hover:bg-[#D1D5DB] transition-colors duration-200"
+      {filteredTasks.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          {filter === 'completed' 
+            ? "No completed tasks yet."
+            : filter === 'active'
+            ? "No active tasks."
+            : "No tasks yet. Click the \"Add Task\" button to create your first task!"}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredTasks.map(task => {
+            console.log('Rendering task:', task);
+            return (
+              <div
+                key={task.id}
+                className="bg-white rounded-lg shadow-sm border border-white/50 backdrop-blur-sm
+                  hover:shadow-md transition-all duration-200"
               >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSubmit()}
-                className="px-4 py-2 bg-[#10B981] text-white rounded-md hover:bg-[#0A9C6D] 
-                  transition-colors duration-200 shadow-sm"
-              >
-                {editingTask ? 'Update' : 'Add'}
-              </button>
-            </div>
-
-            <div className="bg-[#F9FAFB] p-2 rounded-b-xl border-t border-[#E5E7EB] -mb-6 mt-4">
-              <div className="flex flex-nowrap gap-2 overflow-x-auto">
-                <button
-                  type="button"
-                  onClick={() => setShowAlarmInput(!showAlarmInput)}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <Clock className="w-6 h-6" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowLinkInput(!showLinkInput)}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <LinkIcon className="w-6 h-6" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowTagInput(!showTagInput)}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <Tag className="w-6 h-6" />
-                </button>
-
-                <div className="relative flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowPriorityDropdown(!showPriorityDropdown)}
-                    className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                      transition-all duration-200 hover:scale-105"
-                  >
-                    <Flag className="w-6 h-6" />
-                  </button>
-                  {showPriorityDropdown && (
-                    <div className="absolute top-full left-0 mt-1 bg-white rounded-md shadow-lg 
-                      border border-[#E5E7EB] p-1 z-50"
-                    >
-                      <button
-                        onClick={() => { setPriority('high'); setShowPriorityDropdown(false); }}
-                        className="w-full px-2 py-1 text-white bg-red-500 rounded 
-                          hover:opacity-80 mb-1"
-                      >
-                        High
-                      </button>
-                      <button
-                        onClick={() => { setPriority('medium'); setShowPriorityDropdown(false); }}
-                        className="w-full px-2 py-1 text-white bg-yellow-500 rounded 
-                          hover:opacity-80 mb-1"
-                      >
-                        Medium
-                      </button>
-                      <button
-                        onClick={() => { setPriority('low'); setShowPriorityDropdown(false); }}
-                        className="w-full px-2 py-1 text-white bg-green-500 rounded 
-                          hover:opacity-80"
-                      >
-                        Low
-                      </button>
+                <div className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          {task.title && (
+                            <h3 className="text-lg font-semibold text-[#2C5A99] mb-2">
+                              {task.title}
+                            </h3>
+                          )}
+                          <div
+                            className={`text-[#698AAF] ${task.completed ? 'line-through text-[#698AAF]/70' : ''}`}
+                            dangerouslySetInnerHTML={{ __html: task.text }}
+                          />
+                        </div>
+                        <div className="flex items-start gap-2">
+                          {task.alarm && (
+                            <div className="text-sm text-[#698AAF]/70 whitespace-nowrap">
+                              Due: {new Date(task.alarm).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {task.tags && task.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {task.tags.map((tag: string) => (
+                            <span
+                              key={tag}
+                              className="px-2 py-1 bg-[#E8F0FE] text-[#2C5A99] rounded-full text-sm 
+                                hover:bg-[#D0E3FF] transition-all duration-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleFormat('bold')}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <Bold className="w-6 h-6" />
-                </button>
+                <div className="flex items-center justify-between px-4 py-2 border-t border-white/50 bg-[#F8F9FA]">
+                  <div className="flex items-center gap-3">
+                    <TaskActions
+                      taskId={task.id}
+                      isCompleted={task.completed}
+                      onToggle={handleTaskToggle}
+                      onEdit={() => handleTaskEdit(task)}
+                      onDelete={() => handleTaskDelete(task.id)}
+                    />
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleFormat('italic')}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <Italic className="w-6 h-6" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleBulletPoint}
-                  className="w-6 h-6 text-[#6B7280] hover:text-[#10B981] 
-                    transition-all duration-200 hover:scale-105 flex-shrink-0"
-                >
-                  <List className="w-6 h-6" />
-                </button>
+                  <div className="flex items-center gap-2">
+                    <div className={`p-2 rounded-full transition-all duration-200 ${getPriorityColor(task.priority)}`}>
+                      <Flag className="w-5 h-5" />
+                    </div>
+                  </div>
+                </div>
               </div>
-
-              {showAlarmInput && (
-                <div className="mt-2">
-                  <input
-                    type="datetime-local"
-                    value={alarm}
-                    onChange={(e) => setAlarm(e.target.value)}
-                    className="w-full text-sm px-2 py-1 border border-[#E5E7EB] rounded-md
-                      focus:outline-none focus:ring-2 focus:ring-[#10B981]"
-                  />
-                </div>
-              )}
-
-              {showLinkInput && (
-                <div className="mt-2">
-                  <input
-                    type="url"
-                    value={link}
-                    onChange={(e) => setLink(e.target.value)}
-                    placeholder="Add a link"
-                    className="w-full text-sm px-2 py-1 border border-[#E5E7EB] rounded-md
-                      focus:outline-none focus:ring-2 focus:ring-[#10B981]"
-                  />
-                </div>
-              )}
-
-              {showTagInput && (
-                <div className="mt-2">
-                  <input
-                    type="text"
-                    value={tags}
-                    onChange={(e) => handleTagAdd(e.target.value)}
-                    placeholder="Add tags (comma-separated)"
-                    className="w-full text-sm px-2 py-1 border border-[#E5E7EB] rounded-md
-                      focus:outline-none focus:ring-2 focus:ring-[#10B981]"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </>
+            );
+          })}
+        </div>
       )}
 
-      <button
-        onClick={() => setIsAdding(true)}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-[#10B981] text-white rounded-full 
-          shadow-lg hover:bg-[#0A9C6D] transition-colors duration-200 flex items-center 
-          justify-center group focus:outline-none focus:ring-2 focus:ring-offset-2 
-          focus:ring-[#10B981]"
-      >
-        <Plus className="w-6 h-6 transition-transform duration-200 group-hover:scale-110" />
-      </button>
+      <TaskFormModal
+        isOpen={isModalOpen}
+        editingTask={editingTask}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingTask(null);
+        }}
+        onSubmit={(taskData) => {
+          if (editingTask) {
+            onTaskUpdate(editingTask.id, taskData);
+          } else {
+            onTaskAdd(taskData);
+          }
+          setIsModalOpen(false);
+          setEditingTask(null);
+        }}
+      />
     </div>
   );
 };
