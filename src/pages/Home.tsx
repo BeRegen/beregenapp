@@ -2,7 +2,9 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import TaskList from '../components/TaskList';
 import { setStorageItem, getStorageItem } from '../utils/storage';
-import { ArrowUpDown, LayoutGrid, List, Tag, Check } from 'lucide-react';
+import { ArrowUpDown, LayoutGrid, List, Tag, Check, Trash2 } from 'lucide-react';
+import { TrashItem } from '../types';
+import Button from '../components/Button';
 
 interface Task {
   id: string;
@@ -15,6 +17,7 @@ interface Task {
   tags?: string[];
   priority?: 'high' | 'medium' | 'low';
   createdAt: number;
+  order?: number;
 }
 
 type SortMode = 'priority' | 'date';
@@ -45,6 +48,8 @@ const Home: React.FC = () => {
   const [newTag, setNewTag] = useState('');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     console.log('Tasks updated:', tasks);
@@ -78,6 +83,7 @@ const Home: React.FC = () => {
         tags: taskData.tags || [],
         priority: taskData.priority,
         createdAt: taskData.id ? (prev.find((t: Task) => t.id === taskData.id)?.createdAt || Date.now()) : Date.now(),
+        order: taskData.order,
       };
 
       console.log('Created new task:', newTask);
@@ -97,7 +103,7 @@ const Home: React.FC = () => {
         task.id === taskId ? { ...task, ...updates } : task
       );
       console.log('Updated tasks:', updatedTasks);
-      return updatedTasks;
+      return sortTasks(updatedTasks);
     });
   }, []);
 
@@ -105,17 +111,61 @@ const Home: React.FC = () => {
     setTasks((prev: Task[]) => prev.filter((task: Task) => task.id !== id));
   }, []);
 
+  const handleBulkDelete = (taskIds: string[]) => {
+    const tasksToDelete = tasks.filter(task => taskIds.includes(task.id));
+    const trashItems: TrashItem[] = tasksToDelete.map(task => ({
+      task: { ...task, deletedAt: Date.now() },
+      deletedAt: Date.now()
+    }));
+
+    // Add to trash
+    const currentTrashedItems = getStorageItem<TrashItem[]>('trashedItems', []);
+    setStorageItem('trashedItems', [...currentTrashedItems, ...trashItems]);
+
+    // Remove from active tasks
+    setTasks(prev => prev.filter(task => !taskIds.includes(task.id)));
+    setSelectedTasks(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTasks(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(taskId)) {
+        newSelected.delete(taskId);
+      } else {
+        newSelected.add(taskId);
+      }
+      return newSelected;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTasks.size === filteredTasks.length) {
+      setSelectedTasks(new Set());
+    } else {
+      setSelectedTasks(new Set(filteredTasks.map(task => task.id)));
+    }
+  };
+
   const sortTasks = (tasks: Task[]): Task[] => {
-    const priorityOrder = { high: 0, medium: 1, low: 2, none: 3 };
-    return [...tasks].sort((a: Task, b: Task) => {
-      if (sortMode === 'priority') {
+    if (sortMode === 'priority') {
+      const priorityOrder = { high: 0, medium: 1, low: 2, none: 3 };
+      return [...tasks].sort((a: Task, b: Task) => {
         const aPriority = a.priority || 'none';
         const bPriority = b.priority || 'none';
         return priorityOrder[aPriority] - priorityOrder[bPriority];
-      } else {
-        return b.createdAt - a.createdAt;
-      }
-    });
+      });
+    } else if (sortMode === 'date') {
+      return [...tasks].sort((a: Task, b: Task) => b.createdAt - a.createdAt);
+    } else {
+      // Default to manual order
+      return [...tasks].sort((a: Task, b: Task) => {
+        const aOrder = a.order ?? Number.MAX_SAFE_INTEGER;
+        const bOrder = b.order ?? Number.MAX_SAFE_INTEGER;
+        return aOrder - bOrder;
+      });
+    }
   };
 
   const getAllTags = useCallback(() => {
@@ -162,6 +212,15 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleTasksReorder = (reorderedTasks: Task[]) => {
+    // Update tasks with new order
+    const updatedTasks = reorderedTasks.map((task, index) => ({
+      ...task,
+      order: index
+    }));
+    setTasks(updatedTasks);
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex">
       <Navbar />
@@ -188,103 +247,43 @@ const Home: React.FC = () => {
                   
                   <div className="h-6 w-px bg-[#F1F2FD]" />
                   
-                  <div className="relative" ref={tagDropdownRef}>
-                    <button
-                      onClick={() => setShowTagDropdown(!showTagDropdown)}
-                      className={`p-2 rounded-lg flex items-center gap-2 transition-all duration-200
-                        ${selectedTag 
-                          ? 'bg-gradient-to-r from-[#4CADCB] to-[#2C5A99] text-white shadow-sm' 
-                          : 'text-[#698AAF] hover:bg-[#F1F2FD]'}`}
-                      title="Filter by tag"
-                    >
-                      <Tag className="w-5 h-5" />
-                      {selectedTag ? (
-                        <span className="text-sm font-medium">{selectedTag}</span>
-                      ) : (
-                        <span className="text-sm font-medium">Tags</span>
-                      )}
-                    </button>
-                    {showTagDropdown && (
-                      <div className="absolute right-0 mt-2 bg-white/95 rounded-xl 
-                        shadow-[0_8px_24px_-4px_rgba(44,90,153,0.15)] 
-                        border border-white/50 backdrop-blur-sm p-3 z-50 min-w-[250px]"
-                      >
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {getAllTags().map(tag => (
-                            <span
-                              key={tag}
-                              className="px-2 py-1 bg-[#E8F0FE] text-[#2C5A99] rounded-full text-sm flex items-center gap-1"
-                            >
-                              {tag}
-                              <button
-                                onClick={() => setSelectedTag(tag === selectedTag ? '' : tag)}
-                                className="hover:text-red-500"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-
-                        {showNewTagInput ? (
-                          <div className="flex gap-2 mb-3">
-                            <input
-                              type="text"
-                              value={newTag}
-                              onChange={(e) => setNewTag(e.target.value)}
-                              placeholder="Add new tag"
-                              className="flex-1 text-sm px-3 py-1.5 border border-white rounded-lg bg-white/80
-                                focus:outline-none focus:ring-2 focus:ring-[#4CADCB]/20 focus:border-transparent
-                                text-[#2C5A99] placeholder-[#698AAF]/70 shadow-sm backdrop-blur-sm"
-                            />
-                            <button
-                              onClick={handleAddNewTag}
-                              className="px-3 py-1.5 bg-[#E8F0FE] text-[#2C5A99] rounded-lg hover:bg-[#D0E3FF] 
-                                transition-all duration-200 active:scale-95"
-                            >
-                              Add
-                            </button>
-                            <button
-                              onClick={() => setShowNewTagInput(false)}
-                              className="px-3 py-1.5 text-[#698AAF] hover:text-[#2C5A99] rounded-lg 
-                                transition-all duration-200 active:scale-95"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setShowNewTagInput(true)}
-                            className="w-full px-3 py-1.5 text-sm text-[#2C5A99] bg-[#F1F2FD] rounded-lg 
-                              hover:bg-[#E8F0FE] transition-all duration-200 active:scale-95 mb-3"
-                          >
-                            + Add New Tag
-                          </button>
-                        )}
-
-                        <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                          {defaultTags.map(tag => (
-                            <button
-                              key={tag}
-                              onClick={() => setSelectedTag(tag === selectedTag ? '' : tag)}
-                              className={`w-full px-3 py-1.5 text-sm rounded-lg flex items-center justify-between
-                                ${selectedTag === tag 
-                                  ? 'bg-[#E8F0FE] text-[#2C5A99]' 
-                                  : 'text-[#2C5A99] hover:bg-[#F1F2FD]/50'}`}
-                            >
-                              <span>{tag}</span>
-                              {selectedTag === tag && (
-                                <Check className="w-4 h-4 text-[#4CADCB]" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => setIsSelectionMode(!isSelectionMode)}
+                    className={`p-2 rounded-lg flex items-center gap-2 transition-all duration-200
+                      ${isSelectionMode
+                        ? 'bg-gradient-to-r from-[#4CADCB] to-[#2C5A99] text-white shadow-sm' 
+                        : 'text-[#698AAF] hover:bg-[#F1F2FD]'}`}
+                    title="Select tasks to delete"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
             </div>
+
+            {isSelectionMode && (
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={toggleSelectAll}
+                  className="px-4 py-2 text-[#2C5A99] bg-white rounded-lg border border-white
+                    hover:bg-[#F1F2FD] transition-all duration-200"
+                >
+                  {selectedTasks.size === filteredTasks.length ? 'Deselect All' : 'Select All'}
+                </Button>
+                {selectedTasks.size > 0 && (
+                  <Button
+                    variant="primary"
+                    onClick={() => handleBulkDelete(Array.from(selectedTasks))}
+                    className="px-4 py-2 bg-gradient-to-r from-red-400 to-red-600 text-white rounded-lg
+                      hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Move to Trash ({selectedTasks.size})
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="bg-white rounded-lg shadow-lg p-6">
@@ -293,6 +292,10 @@ const Home: React.FC = () => {
               onTaskAdd={handleAddTask}
               onTaskUpdate={handleUpdateTask}
               onTaskDelete={handleDeleteTask}
+              isSelectionMode={isSelectionMode}
+              selectedTasks={selectedTasks}
+              onTaskSelect={toggleTaskSelection}
+              onTasksReorder={handleTasksReorder}
             />
           </div>
         </div>
